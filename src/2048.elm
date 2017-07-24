@@ -112,7 +112,6 @@ doPad w direct slice = let
         Forward -> (zeros slice)++slice
         Backward -> slice++(zeros slice)
 
-
 shift : Orientation -> Direction -> Field -> Field
 shift orient direct field = let
         tfield = doTranspose orient field
@@ -120,6 +119,13 @@ shift orient direct field = let
     in
         doTranspose orient { tfield | array = Array.fromList (List.concat slices) }
     
+canShift : Field -> { up: Bool, down: Bool, left: Bool, right: Bool }
+canShift field = {
+        up = field /= shift Vert Backward field,
+        down = field /= shift Vert Forward field,
+        left = field /= shift Hor Backward field,
+        right = field /= shift Hor Forward field
+    }
 
 render : Field -> Html msg
 render field = let
@@ -155,13 +161,13 @@ update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
         Up ->
-            (Model 0 (shift Vert Backward model.field), Cmd.none)
+            (Model 0 (shift Vert Backward model.field), rand model.field)
         Down ->
-            (Model 0 (shift Vert Forward model.field), Cmd.none)
+            (Model 0 (shift Vert Forward model.field), rand model.field)
         Left ->
-            (Model 0 (shift Hor Backward model.field), Cmd.none)
+            (Model 0 (shift Hor Backward model.field), rand model.field)
         Right ->
-            (Model 0 (shift Hor Forward model.field), Cmd.none)
+            (Model 0 (shift Hor Forward model.field), rand model.field)
         Drop ->
             if hole model.field
                 then (model, rand model.field)
@@ -174,16 +180,18 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    div []
+    let 
+        can = canShift model.field
+    in div []
         [ text (toString model.score)
         , br [] []
-        , (text <| toString <| Array.length model.field.array)
+        , (text <| toString <| can)
         , br [] []
         , render model.field
-        , button [onClick Up] [text "Up"]
-        , button [onClick Down] [text "Down"]
-        , button [onClick Left] [text "Left"]
-        , button [onClick Right] [text "Right"]
+        , button [onClick Up, disabled (not can.up)] [text "Up"]
+        , button [onClick Down, disabled (not can.down)] [text "Down"]
+        , button [onClick Left, disabled (not can.left)] [text "Left"]
+        , button [onClick Right, disabled (not can.right)] [text "Right"]
         , button [onClick Drop] [text "Drop"]
         ]
 
@@ -193,7 +201,5 @@ subscriptions model =
 
 init : (Model, Cmd Msg)
 init = 
-    ( Model 0 (empty 4 4)
-    , Cmd.none
-    
-    )
+    let model = Model 0 (empty 4 4)
+    in ( model, rand model.field)
