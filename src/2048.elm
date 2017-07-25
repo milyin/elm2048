@@ -7,8 +7,12 @@ import Array exposing (..)
 import Random
 import Styles exposing (..)
 import Keyboard exposing (..)
+import Mouse exposing (Position)
+import Json.Decode as Decode
 
 { id, class, classList } = namespace2048
+
+dragSensitivity = 50
 
 main : Program Never Model Msg
 main =
@@ -144,6 +148,7 @@ render field = let
 
 type alias Model =
     { score : Int
+    , drag : Maybe Position
     , field: Field
     }
 
@@ -155,6 +160,8 @@ type Msg
     | Right
     | Rand Int Int Int
     | Nop
+    | DragStart Position
+    | DragEnd Position
 
 orient2msg : Orientation -> Direction -> Msg
 orient2msg orient direct = case (orient,direct) of
@@ -174,9 +181,8 @@ move orient dir model = let
         cmd = if newfield == model.field
             then Cmd.none
             else rand model.field
-    in (Model 0 newfield, cmd)
+    in (Model 0 Nothing newfield, cmd)
     
-
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
@@ -187,10 +193,24 @@ update msg model =
         Rand v x y -> 
             if hole model.field 
                 then case (drop v x y model.field) of
-                    Just field -> (Model 0 field, Cmd.none)
+                    Just field -> (Model 0 Nothing field, Cmd.none)
                     Nothing -> (model, rand model.field)
                 else (model, Cmd.none)
         Nop -> (model, Cmd.none)
+        DragStart start -> (Model 0 (Just start) model.field, Cmd.none)
+        DragEnd end -> case model.drag of
+            Nothing -> (model, Cmd.none)
+            Just start -> let
+                    dx = end.x - start.x
+                    dy = end.y - start.y
+                    orient = if (abs dx) > (abs dy) then Hor else Vert
+                    dir = case orient of
+                        Hor -> if dx > 0 then Forward else Backward
+                        Vert -> if dy > 0 then Forward else Backward
+                in
+                    if (abs dx) + (abs dy) < dragSensitivity
+                        then (Model 0 Nothing model.field, Cmd.none)
+                        else move orient dir model
 
 view : Model -> Html Msg
 view model =
@@ -205,15 +225,19 @@ view model =
         ]
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
-    Keyboard.downs <| \code -> case code of
-        37 -> Left
-        38 -> Up
-        39 -> Right
-        40 -> Down
-        _ -> Nop
+subscriptions model = Sub.batch 
+    [ Keyboard.downs <| \code -> case code of
+            37 -> Left
+            38 -> Up
+            39 -> Right
+            40 -> Down
+            _ -> Nop
+    , if model.drag == Nothing 
+        then Mouse.downs (\position -> DragStart position)
+        else Mouse.ups (\position -> DragEnd position)
+    ]   
 
 init : (Model, Cmd Msg)
 init = 
-    let model = Model 0 (empty 4 4)
+    let model = Model 0 Nothing (empty 4 4)
     in ( model, rand model.field)

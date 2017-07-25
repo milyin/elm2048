@@ -40,7 +40,8 @@ css = (stylesheet << namespace namespace2048.name)
             textAlign center,
             verticalAlign middle,
             lineHeight (px 100),
-            fontSize (px 60)
+            fontSize (px 60),
+            property "user-select" "none"
         ],
         class T0 [],
         class T2 [ backgroundColor (rgb 238 228 218) ],
@@ -48,6 +49,7 @@ css = (stylesheet << namespace namespace2048.name)
         class T8 [ backgroundColor (rgb 242 177 121) ],
         class T16 [ backgroundColor (rgb 242 177 121) ],
         class T32 [ backgroundColor (rgb 246 124 95) ],
+
         class T32 [ backgroundColor (rgb 246 124 95) ],
         class T64 [ backgroundColor (rgb 246 124 95) ],
         class T128 [ backgroundColor (rgb 237 207 114) ],
