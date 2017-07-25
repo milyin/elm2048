@@ -6,6 +6,7 @@ import Html.Events exposing (..)
 import Array exposing (..)
 import Random
 import Styles exposing (..)
+import Keyboard exposing (..)
 
 { id, class, classList } = namespace2048
 
@@ -118,13 +119,17 @@ shift orient direct field = let
         slices = List.map ((hslice tfield) >> (doShrink direct) >> (doPad tfield.width direct)) (ys tfield)
     in
         doTranspose orient { tfield | array = Array.fromList (List.concat slices) }
-    
-canShift : Field -> { up: Bool, down: Bool, left: Bool, right: Bool }
-canShift field = {
-        up = field /= shift Vert Backward field,
-        down = field /= shift Vert Forward field,
-        left = field /= shift Hor Backward field,
-        right = field /= shift Hor Forward field
+
+
+canShift : Orientation -> Direction -> Field -> Bool
+canShift orient dir field = field /= shift orient dir field
+
+cantShiftField : Field -> { up: Bool, down: Bool, left: Bool, right: Bool }
+cantShiftField field = {
+        up = not (canShift Vert Backward field),
+        down = not (canShift Vert Forward field),
+        left = not (canShift Hor Backward field),
+        right = not (canShift Hor Forward field)
     }
 
 render : Field -> Html msg
@@ -148,56 +153,65 @@ type Msg
     | Down
     | Left
     | Right
-    | Drop
     | Rand Int Int Int
+    | Nop
 
+orient2msg : Orientation -> Direction -> Msg
+orient2msg orient direct = case (orient,direct) of
+    (Vert,Backward) -> Up
+    (Vert,Forward) -> Down
+    (Hor,Backward) -> Left
+    (Hor,Forward) -> Right
 
 rand field = 
     Random.generate 
         (\(is2,(x,y)) -> Rand (if is2 then 2 else 4) x y) 
         (Random.pair Random.bool (Random.pair (Random.int 0 (maxx field)) (Random.int 0 (maxy field))))
 
+move : Orientation -> Direction -> Model -> (Model, Cmd Msg)
+move orient dir model = let
+        newfield = shift orient dir model.field
+        cmd = if newfield == model.field
+            then Cmd.none
+            else rand model.field
+    in (Model 0 newfield, cmd)
+    
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
     case msg of
-        Up ->
-            (Model 0 (shift Vert Backward model.field), rand model.field)
-        Down ->
-            (Model 0 (shift Vert Forward model.field), rand model.field)
-        Left ->
-            (Model 0 (shift Hor Backward model.field), rand model.field)
-        Right ->
-            (Model 0 (shift Hor Forward model.field), rand model.field)
-        Drop ->
-            if hole model.field
-                then (model, rand model.field)
-                else (Model -1 model.field, Cmd.none)
+        Up -> move Vert Backward model
+        Down -> move Vert Forward model
+        Left -> move Hor Backward model
+        Right -> move Hor Forward model
         Rand v x y -> 
-            case (drop v x y model.field) of
-                Just field -> (Model 0 field, Cmd.none)
-                Nothing -> (model, rand model.field)
-
+            if hole model.field 
+                then case (drop v x y model.field) of
+                    Just field -> (Model 0 field, Cmd.none)
+                    Nothing -> (model, rand model.field)
+                else (model, Cmd.none)
+        Nop -> (model, Cmd.none)
 
 view : Model -> Html Msg
 view model =
     let 
-        can = canShift model.field
+        cant = cantShiftField model.field
     in div []
-        [ text (toString model.score)
-        , br [] []
-        , (text <| toString <| can)
-        , br [] []
-        , render model.field
-        , button [onClick Up, disabled (not can.up)] [text "Up"]
-        , button [onClick Down, disabled (not can.down)] [text "Down"]
-        , button [onClick Left, disabled (not can.left)] [text "Left"]
-        , button [onClick Right, disabled (not can.right)] [text "Right"]
-        , button [onClick Drop] [text "Drop"]
+        [ render model.field
+--        , button [onClick Up, disabled cant.up] [text "Up"]
+--        , button [onClick Down, disabled cant.down] [text "Down"]
+--        , button [onClick Left, disabled cant.left] [text "Left"]
+--        , button [onClick Right, disabled cant.right] [text "Right"]
         ]
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.none
+    Keyboard.downs <| \code -> case code of
+        37 -> Left
+        38 -> Up
+        39 -> Right
+        40 -> Down
+        _ -> Nop
 
 init : (Model, Cmd Msg)
 init = 
