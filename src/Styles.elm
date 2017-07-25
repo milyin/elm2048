@@ -5,11 +5,14 @@ import Css.Colors exposing (..)
 import Css.Namespace exposing (namespace)
 import Html.CssHelpers
 
+boardWidth = 4
+boardHeight = 4
+
 namespace2048 =
     Html.CssHelpers.withNamespace "elm2048"
 
-type CssClasses = Tile | T0 | T2 | T4 | T8 | T16 | T32 | 
-    T64 | T128 | T256 | T512 | T1024 | T2048 | TBig
+type CssClasses = Board | Tile | T0 | T2 | T4 | T8 | T16 | T32 | 
+    T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
 
 tileClass n = [ Tile, 
     case n of 
@@ -24,23 +27,37 @@ tileClass n = [ Tile,
         256 -> T256
         512 -> T512
         1024 -> T1024
-        _  -> TBig
+        2048 -> T2048
+        _  -> if n < 9999 then TBig else THuge
     ]
+
+boardWidthVw = 99.0
+
+boardHeightVw = (99.0 * boardHeight) / boardWidth
+
+tileSize = (boardWidthVw / boardWidth) - 0.5
 
 css = (stylesheet << namespace namespace2048.name)
     [
+        class Board
+        [
+            width (vw boardWidthVw),
+            height (vw boardHeightVw),
+            backgroundColor gray,
+            borderRadius (vw 1)
+        ],
         class Tile
         [
             display inlineBlock,
-            borderRadius (px 8),
+            borderRadius (vw 1),
             color (rgb 255 255 255),
-            margin (px 5),
-            width (px 100),
-            height (px 100),
+            margin (vw 0.25),
+            width (vw tileSize),
+            height (vw tileSize),
             textAlign center,
             verticalAlign middle,
-            lineHeight (px 100),
-            fontSize (px 60),
+            lineHeight (vw tileSize),
+            fontSize (vw (tileSize / 2)),
             property "user-select" "none"
         ],
         class T0 [],
@@ -55,7 +72,8 @@ css = (stylesheet << namespace namespace2048.name)
         class T128 [ backgroundColor (rgb 237 207 114) ],
         class T256 [ backgroundColor (rgb 237 204 97) ],
         class T512 [ backgroundColor (rgb 237 200 80) ],
-        class T1024 [ backgroundColor (rgb 237 197 63) ],
-        class T2048 [ backgroundColor (rgb 237 194 46) ],
-        class TBig [ backgroundColor (rgb 60 58 50) ]
+        class T1024 [ backgroundColor (rgb 237 197 63), fontSize (vw (tileSize / 3)) ],
+        class T2048 [ backgroundColor (rgb 237 194 46), fontSize (vw (tileSize / 3)) ],
+        class TBig [ backgroundColor (rgb 60 58 50), fontSize (vw (tileSize / 3)) ],
+        class THuge [ backgroundColor (rgb 60 58 50), fontSize (vw (tileSize / 4)) ]
     ]

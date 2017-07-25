@@ -218,7 +218,8 @@ view model =
     let 
         cant = cantShiftField model.field
     in div 
-        [ onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
+        [ class [Board]
+        , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
         , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
         ]
         [ render model.field
@@ -243,5 +244,5 @@ subscriptions model = Sub.batch
 
 init : (Model, Cmd Msg)
 init = 
-    let model = Model 0 Nothing (empty 4 4)
+    let model = Model 0 Nothing (empty boardWidth boardHeight)
     in ( model, rand model.field)
