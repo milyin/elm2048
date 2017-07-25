@@ -9,6 +9,7 @@ import Styles exposing (..)
 import Keyboard exposing (..)
 import Mouse exposing (Position)
 import Json.Decode as Decode
+import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
 
 { id, class, classList } = namespace2048
 
@@ -148,7 +149,7 @@ render field = let
 
 type alias Model =
     { score : Int
-    , drag : Maybe Position
+    , drag : Maybe (Int,Int)
     , field: Field
     }
 
@@ -160,8 +161,8 @@ type Msg
     | Right
     | Rand Int Int Int
     | Nop
-    | DragStart Position
-    | DragEnd Position
+    | DragStart Int Int
+    | DragEnd Int Int
 
 orient2msg : Orientation -> Direction -> Msg
 orient2msg orient direct = case (orient,direct) of
@@ -197,12 +198,12 @@ update msg model =
                     Nothing -> (model, rand model.field)
                 else (model, Cmd.none)
         Nop -> (model, Cmd.none)
-        DragStart start -> (Model 0 (Just start) model.field, Cmd.none)
-        DragEnd end -> case model.drag of
+        DragStart sx sy -> (Model 0 (Just (sx,sy) ) model.field, Cmd.none)
+        DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
-            Just start -> let
-                    dx = end.x - start.x
-                    dy = end.y - start.y
+            Just (sx,sy) -> let
+                    dx = ex - sx
+                    dy = ey - sy
                     orient = if (abs dx) > (abs dy) then Hor else Vert
                     dir = case orient of
                         Hor -> if dx > 0 then Forward else Backward
@@ -216,7 +217,10 @@ view : Model -> Html Msg
 view model =
     let 
         cant = cantShiftField model.field
-    in div []
+    in div 
+        [ onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
+        , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
+        ]
         [ render model.field
 --        , button [onClick Up, disabled cant.up] [text "Up"]
 --        , button [onClick Down, disabled cant.down] [text "Down"]
@@ -233,8 +237,8 @@ subscriptions model = Sub.batch
             40 -> Down
             _ -> Nop
     , if model.drag == Nothing 
-        then Mouse.downs (\position -> DragStart position)
-        else Mouse.ups (\position -> DragEnd position)
+        then Mouse.downs (\pos -> DragStart pos.x pos.y)
+        else Mouse.ups (\pos -> DragEnd pos.x pos.y)
     ]   
 
 init : (Model, Cmd Msg)
