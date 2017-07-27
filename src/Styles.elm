@@ -5,8 +5,8 @@ import Css.Colors exposing (..)
 import Css.Namespace exposing (namespace)
 import Html.CssHelpers
 
-boardWidth = 4
-boardHeight = 4
+boardWidth = 24
+boardHeight = 10
 
 namespace2048 =
     Html.CssHelpers.withNamespace "elm2048"
