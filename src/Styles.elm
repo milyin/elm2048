@@ -31,9 +31,9 @@ tileClass n = [ Tile,
         _  -> if n < 9999 then TBig else THuge
     ]
 
-boardWidthVw = 95.0
+boardWidthVw = 30.0
 
-boardHeightVw = (95.0 * boardHeight) / boardWidth
+boardHeightVw = (30.0 * boardHeight) / boardWidth
 
 tileSize = (boardWidthVw / boardWidth) - 0.5
 

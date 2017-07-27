@@ -149,10 +149,16 @@ render field = let
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
 
+type alias ModelFields =
+     { current: Field
+     , before_drop: Field
+     , before_move: Field
+    }
+
 type alias Model =
     { score : Int
     , drag : Maybe (Int,Int)
-    , field: Field
+    , fields: ModelFields
     }
 
 
@@ -180,11 +186,16 @@ rand field =
 
 move : Orientation -> Direction -> Model -> (Model, Cmd Msg)
 move orient dir model = let
-        (score, newfield) = shift orient dir model.field
-        cmd = if newfield == model.field
-            then Cmd.none
-            else rand model.field
-    in (Model (score + model.score) Nothing newfield, cmd)
+        (score, newfield) = shift orient dir model.fields.current
+    in if newfield == model.fields.current
+        then (model, Cmd.none)
+        else 
+            ( { model 
+              | score = score + model.score
+              , fields = ModelFields newfield newfield model.fields.current
+              }
+            , rand newfield
+            )
     
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -194,13 +205,15 @@ update msg model =
         Left -> move Hor Backward model
         Right -> move Hor Forward model
         Rand v x y -> 
-            if hole model.field 
-                then case (drop v x y model.field) of
-                    Just field -> (Model model.score Nothing field, Cmd.none)
-                    Nothing -> (model, rand model.field)
+            if hole model.fields.current
+                then case (drop v x y model.fields.current) of
+                    Just newfield -> ( { model 
+                        | fields = ModelFields newfield model.fields.before_drop model.fields.before_move
+                        }, Cmd.none)
+                    Nothing -> (model, rand model.fields.current)
                 else (model, Cmd.none)
         Nop -> (model, Cmd.none)
-        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field, Cmd.none)
+        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.fields, Cmd.none)
         DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
             Just (sx,sy) -> let
@@ -212,13 +225,13 @@ update msg model =
                         Vert -> if dy > 0 then Forward else Backward
                 in
                     if (abs dx) + (abs dy) < dragSensitivity
-                        then (Model model.score Nothing model.field, Cmd.none)
+                        then (Model model.score Nothing model.fields, Cmd.none)
                         else move orient dir model
 
 view : Model -> Html Msg
 view model =
     let 
-        cant = cantShiftField model.field
+        cant = cantShiftField model.fields.current
     in div []
         [ div [class [BoardTitle]] 
             [
@@ -229,7 +242,9 @@ view model =
             , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
             , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
             ]
-            [ render model.field
+            [ render model.fields.current
+            , render model.fields.before_drop
+            , render model.fields.before_move
     --        , button [onClick Up, disabled cant.up] [text "Up"]
     --        , button [onClick Down, disabled cant.down] [text "Down"]
     --        , button [onClick Left, disabled cant.left] [text "Left"]
@@ -252,5 +267,7 @@ subscriptions model = Sub.batch
 
 init : (Model, Cmd Msg)
 init = 
-    let model = Model 0 Nothing (empty boardWidth boardHeight)
-    in ( model, rand model.field)
+    let 
+        e = empty boardWidth boardHeight
+        model = Model 0 Nothing (ModelFields e e e)
+    in ( model, rand model.fields.current)
