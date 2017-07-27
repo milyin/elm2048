@@ -5,13 +5,13 @@ import Css.Colors exposing (..)
 import Css.Namespace exposing (namespace)
 import Html.CssHelpers
 
-boardWidth = 24
-boardHeight = 10
+boardWidth = 4
+boardHeight = 4
 
 namespace2048 =
     Html.CssHelpers.withNamespace "elm2048"
 
-type CssClasses = Board | Tile | T0 | T2 | T4 | T8 | T16 | T32 | 
+type CssClasses = Board | BoardTitle | Score | Tile | T0 | T2 | T4 | T8 | T16 | T32 | 
     T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
 
 tileClass n = [ Tile, 
@@ -31,9 +31,9 @@ tileClass n = [ Tile,
         _  -> if n < 9999 then TBig else THuge
     ]
 
-boardWidthVw = 99.0
+boardWidthVw = 95.0
 
-boardHeightVw = (99.0 * boardHeight) / boardWidth
+boardHeightVw = (95.0 * boardHeight) / boardWidth
 
 tileSize = (boardWidthVw / boardWidth) - 0.5
 

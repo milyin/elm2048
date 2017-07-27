@@ -10,6 +10,7 @@ import Keyboard exposing (..)
 import Mouse exposing (Position)
 import Json.Decode as Decode
 import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
+import Tuple exposing (..)
 
 { id, class, classList } = namespace2048
 
@@ -73,15 +74,15 @@ get x y field =
     Just v -> v
     Nothing -> -1
 
-rshrink : List Int -> List Int
+rshrink : List Int -> (Int,List Int)
 rshrink ns = let
-        merge n a = case (List.head a) of
+        merge n (score,a) = case (List.head a) of
             Just h -> if h == n 
-                then [0,h+n]++(List.drop 1 a)
-                else [n]++a
-            Nothing -> [n]
+                then (score+h+n, [0,h+n]++(List.drop 1 a))
+                else (score, [n]++a)
+            Nothing -> (score, [n])
     in
-        List.foldr merge [] ns |> List.filter ((/=)0)
+        List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)0))
 
 hslice : Field -> Int -> List Int
 hslice field y = List.map (\x -> get x y field) (xs field) |> List.filter ((/=)0) 
@@ -108,26 +109,27 @@ doTranspose orient = case orient of
     Vert -> transpose
     Hor -> \x->x
 
-doShrink direct = case direct of
-    Forward -> rshrink
-    Backward -> (List.reverse >> rshrink >> List.reverse)
+doShrink direct slice = case direct of
+    Forward -> rshrink slice
+    Backward -> rshrink (List.reverse slice) |> mapSecond List.reverse
 
-doPad w direct slice = let
+doPad w direct (score,slice) = let
         zeros slice = List.repeat (w - (List.length slice)) 0
     in case direct of
-        Forward -> (zeros slice)++slice
-        Backward -> slice++(zeros slice)
+        Forward -> (score, (zeros slice)++slice)
+        Backward -> (score, slice++(zeros slice))
 
-shift : Orientation -> Direction -> Field -> Field
+shift : Orientation -> Direction -> Field -> (Int, Field)
 shift orient direct field = let
         tfield = doTranspose orient field
-        slices = List.map ((hslice tfield) >> (doShrink direct) >> (doPad tfield.width direct)) (ys tfield)
+        (scores, slices) = List.foldl (\(score, slice) (scores, slices) -> (scores+score, slices++slice)) (0,[])
+            <| List.map ((hslice tfield) >> (doShrink direct) >> (doPad tfield.width direct)) (ys tfield)
     in
-        doTranspose orient { tfield | array = Array.fromList (List.concat slices) }
+        (scores, doTranspose orient { tfield | array = Array.fromList slices })
 
 
 canShift : Orientation -> Direction -> Field -> Bool
-canShift orient dir field = field /= shift orient dir field
+canShift orient dir field = field /= second ( shift orient dir field )
 
 cantShiftField : Field -> { up: Bool, down: Bool, left: Bool, right: Bool }
 cantShiftField field = {
@@ -178,11 +180,11 @@ rand field =
 
 move : Orientation -> Direction -> Model -> (Model, Cmd Msg)
 move orient dir model = let
-        newfield = shift orient dir model.field
+        (score, newfield) = shift orient dir model.field
         cmd = if newfield == model.field
             then Cmd.none
             else rand model.field
-    in (Model 0 Nothing newfield, cmd)
+    in (Model (score + model.score) Nothing newfield, cmd)
     
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -194,11 +196,11 @@ update msg model =
         Rand v x y -> 
             if hole model.field 
                 then case (drop v x y model.field) of
-                    Just field -> (Model 0 Nothing field, Cmd.none)
+                    Just field -> (Model model.score Nothing field, Cmd.none)
                     Nothing -> (model, rand model.field)
                 else (model, Cmd.none)
         Nop -> (model, Cmd.none)
-        DragStart sx sy -> (Model 0 (Just (sx,sy) ) model.field, Cmd.none)
+        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field, Cmd.none)
         DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
             Just (sx,sy) -> let
@@ -210,23 +212,29 @@ update msg model =
                         Vert -> if dy > 0 then Forward else Backward
                 in
                     if (abs dx) + (abs dy) < dragSensitivity
-                        then (Model 0 Nothing model.field, Cmd.none)
+                        then (Model model.score Nothing model.field, Cmd.none)
                         else move orient dir model
 
 view : Model -> Html Msg
 view model =
     let 
         cant = cantShiftField model.field
-    in div 
-        [ class [Board]
-        , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
-        , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
-        ]
-        [ render model.field
---        , button [onClick Up, disabled cant.up] [text "Up"]
---        , button [onClick Down, disabled cant.down] [text "Down"]
---        , button [onClick Left, disabled cant.left] [text "Left"]
---        , button [onClick Right, disabled cant.right] [text "Right"]
+    in div []
+        [ div [class [BoardTitle]] 
+            [
+                div [class [Score]] [text (toString model.score)]
+            ]
+        , div 
+            [ class [Board]
+            , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
+            , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
+            ]
+            [ render model.field
+    --        , button [onClick Up, disabled cant.up] [text "Up"]
+    --        , button [onClick Down, disabled cant.down] [text "Down"]
+    --        , button [onClick Left, disabled cant.left] [text "Left"]
+    --        , button [onClick Right, disabled cant.right] [text "Right"]
+            ]
         ]
 
 subscriptions : Model -> Sub Msg
