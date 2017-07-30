@@ -26,14 +26,14 @@ main =
     }
 
 type alias Field = {
-    array : Array Int,
+    array : Array Tile,
     height : Int,
     width : Int
 }
 
 empty : Int -> Int -> Field
 empty w h = {
-        array = Array.repeat (h*w) 0,
+        array = Array.repeat (h*w) NoTile,
         height = h,
         width = w
     }
@@ -56,36 +56,43 @@ pos2xy field pos = (pos % field.width, pos // field.width)
 xy2pos : Field -> Int -> Int -> Int
 xy2pos field x y = y*field.width + x
 
-put : Int -> Int -> Int -> Field -> Field
-put val x y field = { field | array = Array.set (xy2pos field x y) val field.array }
+put : Tile -> Int -> Int -> Field -> Field
+put tile x y field = { field | array = Array.set (xy2pos field x y) tile field.array }
 
 drop : Int -> Int -> Int -> Field -> Maybe Field
 drop val x y field =
     case (get x y field) of
-        0 -> Just (put val x y field)
+        NoTile -> Just (put (Tile val Dropped) x y field)
         _ -> Nothing
 
 hole : Field -> Bool
-hole field = Array.foldr (\n hole -> hole || n==0) False field.array
+hole field = Array.foldr (\n hole -> hole || n==NoTile) False field.array
 
-get : Int -> Int -> Field -> Int
+get : Int -> Int -> Field -> Tile
 get x y field = 
   case Array.get (xy2pos field x y) field.array of
     Just v -> v
-    Nothing -> -1
+    Nothing -> NoTile
 
-rshrink : List Int -> (Int,List Int)
+-- List (pos,tile) -> (score,List tile)
+rshrink : List (Int,Tile) -> (Int, List Tile)
 rshrink ns = let
-        merge n (score,a) = case (List.head a) of
-            Just h -> if h == n 
-                then (score+h+n, [0,h+n]++(List.drop 1 a))
-                else (score, [n]++a)
-            Nothing -> (score, [n])
+        merge (pos,tile) (score,tiles) = case (List.head tiles) of
+            Just next_tile -> case (tile,next_tile) of
+                (Tile p _, Tile q _) -> if p == q
+                    then (score+p+q, [NoTile, Tile (p+q) (Merged pos p)]++(List.drop 1 tiles))
+                    else (score, [Tile p (Moved pos)]++tiles)
+                (Tile p _, NoTile) -> (score, [Tile p (Moved pos)]++(List.drop 1 tiles))
+                (NoTile, _) -> (score, tiles)
+            Nothing -> (score, [case tile of
+                    Tile n _ -> Tile n (Moved pos)
+                    NoTile -> NoTile
+                ])
     in
-        List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)0))
+        List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)NoTile))
 
-hslice : Field -> Int -> List Int
-hslice field y = List.map (\x -> get x y field) (xs field) |> List.filter ((/=)0) 
+hslice : Field -> Int -> List (Int,Tile)
+hslice field y = List.map (\x -> (xy2pos field x y, get x y field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
 
 transpose : Field -> Field
 transpose field = let
@@ -114,7 +121,7 @@ doShrink direct slice = case direct of
     Backward -> rshrink (List.reverse slice) |> mapSecond List.reverse
 
 doPad w direct (score,slice) = let
-        zeros slice = List.repeat (w - (List.length slice)) 0
+        zeros slice = List.repeat (w - (List.length slice)) NoTile
     in case direct of
         Forward -> (score, (zeros slice)++slice)
         Backward -> (score, slice++(zeros slice))
@@ -139,13 +146,25 @@ cantShiftField field = {
         right = not (canShift Hor Forward field)
     }
 
+toStringTile field tile = let
+        toStringXY pos = (toString <| first <| pos2xy field pos)++" "++(toString <| second <| pos2xy field pos)
+    in
+        case tile of
+            NoTile -> ""
+            Tile n t -> (toString n) ++ " " ++ case t of
+                Dropped -> "Drop"
+                Moved pos -> "Moved from "++(toStringXY pos)
+                Merged pos val -> "Merged from "++(toStringXY pos)++" "++(toString val)
+
+
+
 render : Field -> Html msg
 render field = let
         renderRow y = div [] (List.map (\x -> renderTile x y) (xs field))
         renderTile x y = let 
-                n = get x y field
+                tile = get x y field
             in
-                div [class (tileClass n)] [ text (if n > 0 then toString n else "") ]
+                div [class (tileClass tile)] [ text (toStringTile field tile) ]
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
 
