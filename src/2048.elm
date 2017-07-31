@@ -12,6 +12,7 @@ import Json.Decode as Decode
 import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
 import Tuple exposing (..)
 import Time exposing (Time, millisecond)
+import Css exposing (asPairs, transform, translate2, pct)
 
 { id, class, classList } = namespace2048
 
@@ -161,28 +162,42 @@ cantShiftField field = {
     }
 
 transitionStyle field (oldx,oldy) (newx,newy) at = let
-        dx = (toFloat (newx - oldx))*at
-        dy = (toFloat (newy - oldy))*at
+        dx = (toFloat (newx - oldx))*(1.0-at)
+        dy = (toFloat (newy - oldy))*(1.0-at)
         percentx = (toString (round (dx * 100)))++"%"
         percenty = (toString (round (dy * 100)))++"%"
     in
-        "("++percentx++","++percenty++") : "++(toString oldx)++" "++(toString oldy)++" -> "++(toString newx)++" "++(toString newy)
+        "("++percentx++","++percenty++")"
         
-toStringTile field (newx,newy) tile = case tile of
+toStringTile animateAt field (newx,newy) tile = case tile of
     NoTile -> ""
     Tile n Dropped -> (toString n) ++ "Drop"
-    Tile n (Moved oldpos) -> (toString n) ++ "Move "++(transitionStyle field (pos2xy field oldpos) (newx,newy) 1.0)
-    Tile n (Merged oldpos oldval) -> "Merge "++(toString n)++" "++(transitionStyle field (pos2xy field oldpos) (newx,newy) 1.0)
+    Tile n (Moved oldpos) -> (toString n) ++ "Move "++(transitionStyle field (pos2xy field oldpos) (newx,newy) animateAt)
+    Tile n (Merged oldpos oldval) -> "Merge "++(toString n)++" "++(transitionStyle field (pos2xy field oldpos) (newx,newy) animateAt)
 
+styled = asPairs >> style
 
+transitionToStyle field (newx,newy) tile at = let
+        toPct field at old new = (toFloat (old-new))*(1.0-at)*100
+        trn (oldx, oldy) = [ transform <| translate2 (toPct field at oldx newx |> pct) (toPct field at oldy newy |> pct) ]
+    in
+        case tile of
+            NoTile -> []
+            Tile n Dropped -> []
+            Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
+            Tile n (Merged oldpos oldval) -> trn (pos2xy field oldpos)
 
-render : Field -> Html msg
-render field = let
-        renderRow y = div [] (List.map (\x -> renderTile x y) (xs field))
-        renderTile x y = let 
+render : Float -> Field -> Html msg
+render animateAt field = let
+        renderRow y = div [] (List.map (\x -> renderTile animateAt (x,y)) (xs field))
+        renderTile animateAt (x,y) = let 
                 tile = get x y field
             in
-                div [class (tileClass tile)] [ text (toStringTile field (x,y) tile) ]
+                div 
+                [ class (tileClass tile)
+                , styled <| transitionToStyle field (x,y) tile animateAt
+                ]
+                [ text (toStringTile animateAt field (x,y) tile) ]
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
 
@@ -282,7 +297,7 @@ view model =
             , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
             , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
             ]
-            [ render model.field
+            [ render (Maybe.withDefault 1.0 model.animateAt) model.field
     --        , button [onClick Up, disabled cant.up] [text "Up"]
     --        , button [onClick Down, disabled cant.down] [text "Down"]
     --        , button [onClick Left, disabled cant.left] [text "Left"]
