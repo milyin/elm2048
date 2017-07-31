@@ -11,10 +11,14 @@ import Mouse exposing (Position)
 import Json.Decode as Decode
 import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
 import Tuple exposing (..)
+import Time exposing (Time, millisecond)
 
 { id, class, classList } = namespace2048
 
 dragSensitivity = 50
+animationTime = 5000*millisecond
+timerInterval = 10*millisecond
+animationStep = timerInterval / animationTime
 
 main : Program Never Model Msg
 main =
@@ -186,6 +190,7 @@ type alias Model =
     { score : Int
     , drag : Maybe (Int,Int)
     , field: Field
+    , animateAt: Maybe Float
     }
 
 
@@ -198,6 +203,7 @@ type Msg
     | Nop
     | DragStart Int Int
     | DragEnd Int Int
+    | Tick Time
 
 orient2msg : Orientation -> Direction -> Msg
 orient2msg orient direct = case (orient,direct) of
@@ -235,12 +241,12 @@ update msg model =
             if hole model.field
                 then case (drop v x y model.field) of
                     Just newfield -> ( { model 
-                        | field = newfield
+                        | field = newfield, animateAt = Just 0
                         }, Cmd.none)
                     Nothing -> (model, rand model.field)
-                else (model, Cmd.none)
+                else ( { model | animateAt = Just 0 }, Cmd.none)
         Nop -> (model, Cmd.none)
-        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field, Cmd.none)
+        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field Nothing, Cmd.none)
         DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
             Just (sx,sy) -> let
@@ -252,8 +258,11 @@ update msg model =
                         Vert -> if dy > 0 then Forward else Backward
                 in
                     if (abs dx) + (abs dy) < dragSensitivity
-                        then (Model model.score Nothing model.field, Cmd.none)
+                        then (Model model.score Nothing model.field Nothing, Cmd.none)
                         else move orient dir model
+        Tick _ -> case model.animateAt of
+            Nothing -> (model, Cmd.none)
+            Just at -> ( { model | animateAt = if at<1 then (Just <| at+animationStep) else Nothing }, Cmd.none)
 
 view : Model -> Html Msg
 view model =
@@ -262,7 +271,11 @@ view model =
     in div []
         [ div [class [BoardTitle]] 
             [
-                div [class [Score]] [text (toString model.score)]
+                div [class [Score]] 
+                [ text (toString model.score)
+                , text " "
+                , text (toString model.animateAt)
+                ]
             ]
         , div 
             [ class [Board]
@@ -278,7 +291,7 @@ view model =
         ]
 
 subscriptions : Model -> Sub Msg
-subscriptions model = Sub.batch 
+subscriptions model = Sub.batch <|
     [ Keyboard.downs <| \code -> case code of
             37 -> Left
             38 -> Up
@@ -288,11 +301,12 @@ subscriptions model = Sub.batch
     , if model.drag == Nothing 
         then Mouse.downs (\pos -> DragStart pos.x pos.y)
         else Mouse.ups (\pos -> DragEnd pos.x pos.y)
-    ]   
+    , Time.every timerInterval Tick
+    ]
 
 init : (Model, Cmd Msg)
 init = 
     let 
         e = empty boardWidth boardHeight
-        model = Model 0 Nothing e
-    in ( model, rand model.field)
+        model = Model 0 Nothing e Nothing
+    in ( model, rand model.field )
