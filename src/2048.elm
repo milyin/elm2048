@@ -53,11 +53,11 @@ ys field = List.range 0 (maxy field)
 pos2xy : Field -> Int -> (Int,Int)
 pos2xy field pos = (pos % field.width, pos // field.width)
 
-xy2pos : Field -> Int -> Int -> Int
-xy2pos field x y = y*field.width + x
+xy2pos : Field -> (Int, Int) -> Int
+xy2pos field (x,y) = y*field.width + x
 
 put : Tile -> Int -> Int -> Field -> Field
-put tile x y field = { field | array = Array.set (xy2pos field x y) tile field.array }
+put tile x y field = { field | array = Array.set (xy2pos field (x,y)) tile field.array }
 
 drop : Int -> Int -> Int -> Field -> Maybe Field
 drop val x y field =
@@ -70,7 +70,7 @@ hole field = Array.foldr (\n hole -> hole || n==NoTile) False field.array
 
 get : Int -> Int -> Field -> Tile
 get x y field = 
-  case Array.get (xy2pos field x y) field.array of
+  case Array.get (xy2pos field (x,y)) field.array of
     Just v -> v
     Nothing -> NoTile
 
@@ -92,7 +92,17 @@ rshrink ns = let
         List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)NoTile))
 
 hslice : Field -> Int -> List (Int,Tile)
-hslice field y = List.map (\x -> (xy2pos field x y, get x y field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
+hslice field y = List.map (\x -> (xy2pos field (x,y), get x y field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
+
+transposeTile : Field -> Field -> Tile -> Tile
+transposeTile srcfield dstfield tile = let
+        swapxy (x,y) = (y,x)
+    in case tile of
+        NoTile -> NoTile
+        Tile n t -> Tile n <| case t of
+            Moved pos -> Moved (xy2pos dstfield <| swapxy <| pos2xy srcfield pos)
+            Merged pos n -> Merged (xy2pos dstfield <| swapxy <| pos2xy srcfield pos) n
+            Dropped -> Dropped
 
 transpose : Field -> Field
 transpose field = let
@@ -104,7 +114,7 @@ transpose field = let
         transposer newpos = let
             (x,y) = pos2xy newfield newpos
         in
-            get y x field
+            get y x field |> transposeTile field newfield
     in
         { newfield | array = Array.initialize (field.width*field.height) transposer }
 
@@ -146,15 +156,19 @@ cantShiftField field = {
         right = not (canShift Hor Forward field)
     }
 
-toStringTile field tile = let
-        toStringXY pos = (toString <| first <| pos2xy field pos)++" "++(toString <| second <| pos2xy field pos)
+transitionStyle field (oldx,oldy) (newx,newy) at = let
+        dx = (toFloat (newx - oldx))*at
+        dy = (toFloat (newy - oldy))*at
+        percentx = (toString (round (dx * 100)))++"%"
+        percenty = (toString (round (dy * 100)))++"%"
     in
-        case tile of
-            NoTile -> ""
-            Tile n t -> (toString n) ++ " " ++ case t of
-                Dropped -> "Drop"
-                Moved pos -> "Moved from "++(toStringXY pos)
-                Merged pos val -> "Merged from "++(toStringXY pos)++" "++(toString val)
+        "("++percentx++","++percenty++") : "++(toString oldx)++" "++(toString oldy)++" -> "++(toString newx)++" "++(toString newy)
+        
+toStringTile field (newx,newy) tile = case tile of
+    NoTile -> ""
+    Tile n Dropped -> (toString n) ++ "Drop"
+    Tile n (Moved oldpos) -> (toString n) ++ "Move "++(transitionStyle field (pos2xy field oldpos) (newx,newy) 1.0)
+    Tile n (Merged oldpos oldval) -> "Merge "++(toString n)++" "++(transitionStyle field (pos2xy field oldpos) (newx,newy) 1.0)
 
 
 
@@ -164,7 +178,7 @@ render field = let
         renderTile x y = let 
                 tile = get x y field
             in
-                div [class (tileClass tile)] [ text (toStringTile field tile) ]
+                div [class (tileClass tile)] [ text (toStringTile field (x,y) tile) ]
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
 
