@@ -17,8 +17,8 @@ import Css exposing (asPairs, transform, translate2, pct)
 { id, class, classList } = namespace2048
 
 dragSensitivity = 50
-animationTime = 5000*millisecond
-timerInterval = 10*millisecond
+animationTime = 100*millisecond
+timerInterval = 4*millisecond
 animationStep = timerInterval / animationTime
 
 main : Program Never Model Msg
@@ -61,21 +61,21 @@ pos2xy field pos = (pos % field.width, pos // field.width)
 xy2pos : Field -> (Int, Int) -> Int
 xy2pos field (x,y) = y*field.width + x
 
-put : Tile -> Int -> Int -> Field -> Field
-put tile x y field = { field | array = Array.set (xy2pos field (x,y)) tile field.array }
+put : Tile -> (Int, Int) -> Field -> Field
+put tile xy field = { field | array = Array.set (xy2pos field xy) tile field.array }
 
-drop : Int -> Int -> Int -> Field -> Maybe Field
-drop val x y field =
-    case (get x y field) of
-        NoTile -> Just (put (Tile val Dropped) x y field)
+drop : Int -> (Int, Int) -> Field -> Maybe Field
+drop val xy field =
+    case (get xy field) of
+        NoTile -> Just (put (Tile val Dropped) xy field)
         _ -> Nothing
 
 hole : Field -> Bool
 hole field = Array.foldr (\n hole -> hole || n==NoTile) False field.array
 
-get : Int -> Int -> Field -> Tile
-get x y field = 
-  case Array.get (xy2pos field (x,y)) field.array of
+get : (Int, Int) -> Field -> Tile
+get xy field = 
+  case Array.get (xy2pos field xy) field.array of
     Just v -> v
     Nothing -> NoTile
 
@@ -97,7 +97,7 @@ rshrink ns = let
         List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)NoTile))
 
 hslice : Field -> Int -> List (Int,Tile)
-hslice field y = List.map (\x -> (xy2pos field (x,y), get x y field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
+hslice field y = List.map (\x -> (xy2pos field (x,y), get (x,y) field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
 
 transposeTile : Field -> Field -> Tile -> Tile
 transposeTile srcfield dstfield tile = let
@@ -119,7 +119,7 @@ transpose field = let
         transposer newpos = let
             (x,y) = pos2xy newfield newpos
         in
-            get y x field |> transposeTile field newfield
+            get (y,x) field |> transposeTile field newfield
     in
         { newfield | array = Array.initialize (field.width*field.height) transposer }
 
@@ -190,14 +190,14 @@ transitionToStyle field (newx,newy) tile at = let
 render : Float -> Field -> Html msg
 render animateAt field = let
         renderRow y = div [] (List.map (\x -> renderTile animateAt (x,y)) (xs field))
-        renderTile animateAt (x,y) = let 
-                tile = get x y field
+        renderTile animateAt xy = let 
+                tile = get xy field
             in
                 div 
                 [ class (tileClass tile)
-                , styled <| transitionToStyle field (x,y) tile animateAt
+                , styled <| transitionToStyle field xy tile animateAt
                 ]
-                [ text (toStringTile animateAt field (x,y) tile) ]
+                [ text (toStringTile animateAt field xy tile) ]
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
 
@@ -214,7 +214,7 @@ type Msg
     | Down
     | Left
     | Right
-    | Rand Int Int Int
+    | Rand Int (Int,Int)
     | Nop
     | DragStart Int Int
     | DragEnd Int Int
@@ -229,7 +229,7 @@ orient2msg orient direct = case (orient,direct) of
 
 rand field = 
     Random.generate 
-        (\(is2,(x,y)) -> Rand (if is2 then 2 else 4) x y) 
+        (\(is2, xy) -> Rand (if is2 then 2 else 4) xy) 
         (Random.pair Random.bool (Random.pair (Random.int 0 (maxx field)) (Random.int 0 (maxy field))))
 
 move : Orientation -> Direction -> Model -> (Model, Cmd Msg)
@@ -252,9 +252,9 @@ update msg model =
         Down -> move Vert Forward model
         Left -> move Hor Backward model
         Right -> move Hor Forward model
-        Rand v x y -> 
+        Rand v xy -> 
             if hole model.field
-                then case (drop v x y model.field) of
+                then case (drop v xy model.field) of
                     Just newfield -> ( { model 
                         | field = newfield, animateAt = Just 0
                         }, Cmd.none)
