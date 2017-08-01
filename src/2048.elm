@@ -32,7 +32,7 @@ main =
         , subscriptions = subscriptions
     }
 
-type TileType = Dropped | Moved Int | Merged Int Int
+type TileType = Dropped | Moved Int | Merged (Int,Int) (Int,Int)
 
 type Tile = Tile Int TileType | NoTile
 
@@ -110,19 +110,19 @@ get xy field =
 -- List (pos,tile) -> (score,List tile)
 rshrink : List (Int,Tile) -> (Int, List Tile)
 rshrink ns = let
-        merge (pos,tile) (score,tiles) = case (List.head tiles) of
-            Just next_tile -> case (tile,next_tile) of
-                (Tile p _, Tile q _) -> if p == q
-                    then (score+p+q, [NoTile, Tile (p+q) (Merged pos p)]++(List.drop 1 tiles))
-                    else (score, [Tile p (Moved pos)]++tiles)
-                (Tile p _, NoTile) -> (score, [Tile p (Moved pos)]++(List.drop 1 tiles))
+        merge (apos,atile) (score,tiles) = case (List.head tiles) of
+            Just (bpos, btile) -> case (atile,btile) of
+                (Tile a _, Tile b _) -> if a == b
+                    then (score+a+b, [(apos,NoTile), (apos, Tile (a+b) (Merged (apos,a) (bpos,b))) ]++(List.drop 1 tiles))
+                    else (score, [(apos, Tile a (Moved apos))]++tiles)
+                (Tile a _, NoTile) -> (score, [(apos, Tile a (Moved apos))]++(List.drop 1 tiles))
                 (NoTile, _) -> (score, tiles)
-            Nothing -> (score, [case tile of
-                    Tile n _ -> Tile n (Moved pos)
+            Nothing -> (score, [(apos, case atile of
+                    Tile a _ -> Tile a (Moved apos)
                     NoTile -> NoTile
-                ])
+                )])
     in
-        List.foldr merge (0,[]) ns |> mapSecond (List.filter ((/=)NoTile))
+        List.foldr merge (0,[]) ns |> mapSecond (List.map second >> List.filter ((/=)NoTile))
 
 hslice : Field -> Int -> List (Int,Tile)
 hslice field y = List.map (\x -> (xy2pos field (x,y), get (x,y) field)) (xs field) |> List.filter (\(_,tile) -> tile /= NoTile)
@@ -134,7 +134,9 @@ transposeTile srcfield dstfield tile = let
         NoTile -> NoTile
         Tile n t -> Tile n <| case t of
             Moved pos -> Moved (xy2pos dstfield <| swapxy <| pos2xy srcfield pos)
-            Merged pos n -> Merged (xy2pos dstfield <| swapxy <| pos2xy srcfield pos) n
+            Merged (apos,a) (bpos,b) -> Merged 
+                ((xy2pos dstfield <| swapxy <| pos2xy srcfield apos),a)
+                ((xy2pos dstfield <| swapxy <| pos2xy srcfield bpos),b)
             Dropped -> Dropped
 
 transpose : Field -> Field
@@ -259,14 +261,14 @@ transitionStyle field (oldx,oldy) (newx,newy) at = let
         
 toStringTile animate tile = case (animate,tile) of
     (_, NoTile) -> ""
-    (_, Tile n Dropped) -> (toString n)
-    (_, Tile n (Moved _)) -> (toString n)
-    (Move _, Tile n (Merged _  oldn)) -> (toString oldn)
-    (_, Tile n (Merged _ oldn)) -> (toString n)
+    (_, Tile n Dropped) -> toString n
+    (_, Tile n (Moved _)) -> toString n
+    (Move _, Tile n (Merged (_,a) (_,_))) -> toString a
+    (_, Tile n (Merged (_,a) (_,_))) -> toString n
 
 toVisibleClassTile animate tile = case (animate,tile) of
     (Move _, Tile _ Dropped) -> visibleTileClass 0
-    (Move _, Tile n (Merged _  oldn)) -> visibleTileClass oldn
+    (Move _, Tile n (Merged (_,a) (_,_))) -> visibleTileClass a
     (Move _, Tile n (Moved _)) -> visibleTileClass n
     (_, Tile n _) -> visibleTileClass n
     (_, NoTile) -> visibleTileClass 0
@@ -283,7 +285,7 @@ toTransformStyle field (newx,newy) tile animate = let
             NoTile -> []
             Tile n Dropped -> []
             Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
-            Tile n (Merged oldpos oldval) -> trn (pos2xy field oldpos)
+            Tile n (Merged (pa,a) (pb,b)) -> trn (pos2xy field pa)
 
 styled = asPairs >> style
 
