@@ -1,7 +1,7 @@
 module Elm2048 exposing (Model, Msg, update, view, subscriptions, init)
 
 import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes exposing (style)
 import Html.Events exposing (..)
 import Array exposing (..)
 import Random
@@ -12,14 +12,16 @@ import Json.Decode as Decode
 import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
 import Tuple exposing (..)
 import Time exposing (Time, millisecond)
-import Css exposing (asPairs, transform, translate2, pct)
+import Css exposing (asPairs, transform, translate2, pct, vmin, width, height)
 
 { id, class, classList } = namespace2048
 
 dragSensitivity = 50
-animationTime = 2000*millisecond
+animationTime = 500*millisecond
 timerInterval = 4*millisecond
 animationStep = timerInterval / animationTime
+boardWidth = 4
+boardHeight = 4
 
 main : Program Never Model Msg
 main =
@@ -187,58 +189,6 @@ cantShiftField field = {
         right = not (canShift Hor Forward field)
     }
 
-transitionStyle field (oldx,oldy) (newx,newy) at = let
-        dx = (toFloat (newx - oldx))*(1.0-at)
-        dy = (toFloat (newy - oldy))*(1.0-at)
-        percentx = (toString (round (dx * 100)))++"%"
-        percenty = (toString (round (dy * 100)))++"%"
-    in
-        "("++percentx++","++percenty++")"
-        
-toStringTile animate tile = case (animate,tile) of
-    (_, NoTile) -> ""
-    (_, Tile n Dropped) -> (toString n)
-    (_, Tile n (Moved _)) -> (toString n)
-    (Move _, Tile n (Merged _  oldn)) -> (toString oldn)
-    (_, Tile n (Merged _ oldn)) -> (toString n)
-
-toClassTile animate tile = case (animate,tile) of
-    (Move _, Tile _ Dropped) -> tileClass 0
-    (Move _, Tile n (Merged _  oldn)) -> tileClass oldn
-    (Move _, Tile n (Moved _)) -> tileClass n
-    (_, Tile n _) -> tileClass n
-    (_, NoTile) -> tileClass 0
-
-toTransformStyle field (newx,newy) tile animate = let
-        at = case animate of
-            Stop -> 1
-            Move at -> at
-            Drop at -> at
-        toPct field at old new = (toFloat (old-new))*(1.0-at)*100
-        trn (oldx, oldy) = [ transform <| translate2 (toPct field at oldx newx |> pct) (toPct field at oldy newy |> pct) ]
-    in
-        case tile of
-            NoTile -> []
-            Tile n Dropped -> []
-            Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
-            Tile n (Merged oldpos oldval) -> trn (pos2xy field oldpos)
-
-styled = asPairs >> style
-
-render : Animate -> Field -> Html msg
-render animate field = let
-        renderRow y = div [] (List.map (\x -> renderTile animate (x,y)) (xs field))
-        renderTile animate xy = let 
-                tile = get xy field
-            in
-                div 
-                [ class (toClassTile animate tile)
-                , styled (toTransformStyle field xy tile animate)
-                ]
-                [ text (toStringTile animate tile) ]
-    in
-        pre [] (List.map (\y -> renderRow y) (ys field))
-
 orient2msg : Orientation -> Direction -> Msg
 orient2msg orient direct = case (orient,direct) of
     (Vert,Backward) -> Up
@@ -299,6 +249,59 @@ update msg model =
             Stop -> (model, Cmd.none)
             _ ->  (model, Cmd.none)
 
+transitionStyle field (oldx,oldy) (newx,newy) at = let
+        dx = (toFloat (newx - oldx))*(1.0-at)
+        dy = (toFloat (newy - oldy))*(1.0-at)
+        percentx = (toString (round (dx * 100)))++"%"
+        percenty = (toString (round (dy * 100)))++"%"
+    in
+        "("++percentx++","++percenty++")"
+        
+toStringTile animate tile = case (animate,tile) of
+    (_, NoTile) -> ""
+    (_, Tile n Dropped) -> (toString n)
+    (_, Tile n (Moved _)) -> (toString n)
+    (Move _, Tile n (Merged _  oldn)) -> (toString oldn)
+    (_, Tile n (Merged _ oldn)) -> (toString n)
+
+toVisibleClassTile animate tile = case (animate,tile) of
+    (Move _, Tile _ Dropped) -> visibleTileClass 0
+    (Move _, Tile n (Merged _  oldn)) -> visibleTileClass oldn
+    (Move _, Tile n (Moved _)) -> visibleTileClass n
+    (_, Tile n _) -> visibleTileClass n
+    (_, NoTile) -> visibleTileClass 0
+
+toTransformStyle field (newx,newy) tile animate = let
+        at = case animate of
+            Stop -> 1
+            Move at -> at
+            Drop at -> at
+        toPct field at old new = (toFloat (old-new))*(1.0-at)*100
+        trn (oldx, oldy) = [ transform <| translate2 (toPct field at oldx newx |> pct) (toPct field at oldy newy |> pct) ]
+    in
+        case tile of
+            NoTile -> []
+            Tile n Dropped -> []
+            Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
+            Tile n (Merged oldpos oldval) -> trn (pos2xy field oldpos)
+
+styled = asPairs >> style
+
+render : Animate -> Field -> Html msg
+render animate field = let
+        renderRow y = div [ class [BoardRow] ] (List.map (\x -> renderTile animate (x,y)) (xs field))
+        renderTile animate xy = let 
+                tile = get xy field
+            in  div [ class [BoardTile] -- BoardTile have no margins. So apply transform n*100% correctly moves it to n tiles
+                    , styled (toTransformStyle field xy tile animate) 
+                    ]
+                    [ div   [ class (toVisibleClassTile animate tile) ] -- VisibleTile is inside BoardTile
+                            [ div [ class [TileText] ] [ text (toStringTile animate tile) ] ]
+                    ]
+    in
+        div [ class [Board] ] (List.map (\y -> renderRow y) (ys field))
+
+
 view : Model -> Html Msg
 view model =
     let 
@@ -313,8 +316,7 @@ view model =
                 ]
             ]
         , div 
-            [ class [Board]
-            , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
+            [ onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
             , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
             ]
             [ render model.animate model.field

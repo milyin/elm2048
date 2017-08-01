@@ -1,20 +1,18 @@
 module Styles exposing (..)
 
 import Css exposing (..)
+import Css.Elements exposing (..)
 import Css.Colors exposing (..)
 import Css.Namespace exposing (namespace)
 import Html.CssHelpers
 
-boardWidth = 4
-boardHeight = 4
-
 namespace2048 =
-    Html.CssHelpers.withNamespace "elm2048"
+    Html.CssHelpers.withNamespace ""
 
-type CssClasses = Board | BoardTitle | Score | BaseTile | T0 | T2 | T4 | T8 | T16 | T32 | 
-    T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
+type CssClasses = Board | BoardRow | BoardTitle | Score | BoardTile | VisibleTile | TileText 
+    | T0 | T2 | T4 | T8 | T16 | T32 | T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
 
-tileClass n = [ BaseTile, 
+visibleTileClass n = [ VisibleTile, 
     case n of 
         0 -> T0
         2 -> T2
@@ -31,34 +29,71 @@ tileClass n = [ BaseTile,
         _  -> if n < 9999 then TBig else THuge
     ]
 
-boardWidthVw =95.0
-
-boardHeightVw = (95.0 * boardHeight) / boardWidth
-
-tileSize = (boardWidthVw / boardWidth) - 0.5
-
-css = (stylesheet << namespace namespace2048.name)
+css = let
+        boardSize = 98.0
+        tileSize = boardSize / 4 -- use it for font size only: all other sizes are relative to parents.
+                                -- Font size in CSS can't be relative to parent so we apply transform to it 
+                                -- when field is not 4x4
+        fontSizeNorm = tileSize / 2
+        fontSizeTBig = tileSize / 3
+        fontSizeTHuge = tileSize / 4
+        setFont parent fontsz = 
+            class parent 
+                [ children 
+                    [ class TileText
+                        [
+                            fontSize (vmin fontsz)
+                        ]
+                    ]
+                ]
+    in (stylesheet << namespace namespace2048.name)
     [
+        div [
+            padding (px 0),
+            margin (px 0)
+        ],
         class Board
         [
-            width (vw boardWidthVw),
-            height (vw boardHeightVw),
             backgroundColor gray,
-            borderRadius (vw 1)
-        ],
-        class BaseTile
-        [
-            display inlineBlock,
             borderRadius (vw 1),
+            width (vmin boardSize),
+            height (vmin boardSize),
+            displayFlex,
+            flexDirection column,
+            alignItems stretch,
+            justifyContent spaceAround
+        ],
+        class BoardRow
+        [
+            displayFlex,
+            flexDirection row,
+            alignItems stretch,
+            justifyContent spaceAround,
+            flexBasis (pct 100)
+        ],
+        class BoardTile
+        [
+            displayFlex,
+            flexDirection row,
+            alignItems stretch,
+            justifyContent spaceAround,
+            flexBasis (pct 100)
+        ],
+        class VisibleTile
+        [
+            display inlineFlex,
+            flexBasis (pct 100),
+            alignItems center,
+            justifyContent center,
+            borderRadius (vmin 1),
             color (rgb 255 255 255),
-            margin (vw 0.25),
-            width (vw tileSize),
-            height (vw tileSize),
-            textAlign center,
-            verticalAlign middle,
-            lineHeight (vw tileSize),
-            fontSize (vw (tileSize / 2)),
-            property "user-select" "none"
+            property "user-select" "none",
+            margin (vmin 0.25)
+        ],
+        class TileText [
+            justifyContent center,
+            alignItems center,
+            fontSize (vmin fontSizeNorm)
         ],
         class T0 [],
         class T2 [ backgroundColor (rgb 238 228 218) ],
@@ -72,8 +107,13 @@ css = (stylesheet << namespace namespace2048.name)
         class T128 [ backgroundColor (rgb 237 207 114) ],
         class T256 [ backgroundColor (rgb 237 204 97) ],
         class T512 [ backgroundColor (rgb 237 200 80) ],
-        class T1024 [ backgroundColor (rgb 237 197 63), fontSize (vw (tileSize / 3)) ],
-        class T2048 [ backgroundColor (rgb 237 194 46), fontSize (vw (tileSize / 3)) ],
-        class TBig [ backgroundColor (rgb 60 58 50), fontSize (vw (tileSize / 3)) ],
-        class THuge [ backgroundColor (rgb 60 58 50), fontSize (vw (tileSize / 4)) ]
+        class T1024 [ backgroundColor (rgb 237 197 63) ],
+        class T2048 [ backgroundColor (rgb 237 194 46) ],
+        class TBig [ backgroundColor (rgb 60 58 50) ],
+        class THuge [ backgroundColor (rgb 60 58 50) ],
+        setFont T1024 fontSizeTBig,
+        setFont T2048 fontSizeTBig,
+        setFont TBig fontSizeTBig,
+        setFont THuge fontSizeTHuge
     ]
+
