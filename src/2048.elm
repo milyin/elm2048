@@ -17,7 +17,7 @@ import Css exposing (asPairs, transform, translate2, pct)
 { id, class, classList } = namespace2048
 
 dragSensitivity = 50
-animationTime = 100*millisecond
+animationTime = 2000*millisecond
 timerInterval = 4*millisecond
 animationStep = timerInterval / animationTime
 
@@ -30,11 +30,37 @@ main =
         , subscriptions = subscriptions
     }
 
+type TileType = Dropped | Moved Int | Merged Int Int
+
+type Tile = Tile Int TileType | NoTile
+
 type alias Field = {
     array : Array Tile,
     height : Int,
     width : Int
 }
+
+type Animate = Stop | Move Float | Drop Float
+
+type alias Model =
+    { score : Int
+    , drag : Maybe (Int,Int)
+    , field: Field
+    , animate: Animate
+    }
+
+
+type Msg
+    = Up
+    | Down
+    | Left
+    | Right
+    | Rand Int (Int,Int)
+    | Nop
+    | DragStart Int Int
+    | DragEnd Int Int
+    | Tick Time
+
 
 empty : Int -> Int -> Field
 empty w h = {
@@ -169,15 +195,25 @@ transitionStyle field (oldx,oldy) (newx,newy) at = let
     in
         "("++percentx++","++percenty++")"
         
-toStringTile animateAt field (newx,newy) tile = case tile of
-    NoTile -> ""
-    Tile n Dropped -> (toString n) ++ "Drop"
-    Tile n (Moved oldpos) -> (toString n) ++ "Move "++(transitionStyle field (pos2xy field oldpos) (newx,newy) animateAt)
-    Tile n (Merged oldpos oldval) -> "Merge "++(toString n)++" "++(transitionStyle field (pos2xy field oldpos) (newx,newy) animateAt)
+toStringTile animate tile = case (animate,tile) of
+    (_, NoTile) -> ""
+    (_, Tile n Dropped) -> (toString n)
+    (_, Tile n (Moved _)) -> (toString n)
+    (Move _, Tile n (Merged _  oldn)) -> (toString oldn)
+    (_, Tile n (Merged _ oldn)) -> (toString n)
 
-styled = asPairs >> style
+toClassTile animate tile = case (animate,tile) of
+    (Move _, Tile _ Dropped) -> tileClass 0
+    (Move _, Tile n (Merged _  oldn)) -> tileClass oldn
+    (Move _, Tile n (Moved _)) -> tileClass n
+    (_, Tile n _) -> tileClass n
+    (_, NoTile) -> tileClass 0
 
-transitionToStyle field (newx,newy) tile at = let
+toTransformStyle field (newx,newy) tile animate = let
+        at = case animate of
+            Stop -> 1
+            Move at -> at
+            Drop at -> at
         toPct field at old new = (toFloat (old-new))*(1.0-at)*100
         trn (oldx, oldy) = [ transform <| translate2 (toPct field at oldx newx |> pct) (toPct field at oldy newy |> pct) ]
     in
@@ -187,38 +223,21 @@ transitionToStyle field (newx,newy) tile at = let
             Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
             Tile n (Merged oldpos oldval) -> trn (pos2xy field oldpos)
 
-render : Float -> Field -> Html msg
-render animateAt field = let
-        renderRow y = div [] (List.map (\x -> renderTile animateAt (x,y)) (xs field))
-        renderTile animateAt xy = let 
+styled = asPairs >> style
+
+render : Animate -> Field -> Html msg
+render animate field = let
+        renderRow y = div [] (List.map (\x -> renderTile animate (x,y)) (xs field))
+        renderTile animate xy = let 
                 tile = get xy field
             in
                 div 
-                [ class (tileClass tile)
-                , styled <| transitionToStyle field xy tile animateAt
+                [ class (toClassTile animate tile)
+                , styled (toTransformStyle field xy tile animate)
                 ]
-                [ text (toStringTile animateAt field xy tile) ]
+                [ text (toStringTile animate tile) ]
     in
         pre [] (List.map (\y -> renderRow y) (ys field))
-
-type alias Model =
-    { score : Int
-    , drag : Maybe (Int,Int)
-    , field: Field
-    , animateAt: Maybe Float
-    }
-
-
-type Msg
-    = Up
-    | Down
-    | Left
-    | Right
-    | Rand Int (Int,Int)
-    | Nop
-    | DragStart Int Int
-    | DragEnd Int Int
-    | Tick Time
 
 orient2msg : Orientation -> Direction -> Msg
 orient2msg orient direct = case (orient,direct) of
@@ -256,12 +275,12 @@ update msg model =
             if hole model.field
                 then case (drop v xy model.field) of
                     Just newfield -> ( { model 
-                        | field = newfield, animateAt = Just 0
+                        | field = newfield, animate = Move 0
                         }, Cmd.none)
                     Nothing -> (model, rand model.field)
-                else ( { model | animateAt = Just 0 }, Cmd.none)
+                else ( { model | animate = Drop 0 }, Cmd.none)
         Nop -> (model, Cmd.none)
-        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field Nothing, Cmd.none)
+        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field Stop, Cmd.none)
         DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
             Just (sx,sy) -> let
@@ -273,11 +292,12 @@ update msg model =
                         Vert -> if dy > 0 then Forward else Backward
                 in
                     if (abs dx) + (abs dy) < dragSensitivity
-                        then (Model model.score Nothing model.field Nothing, Cmd.none)
+                        then (Model model.score Nothing model.field Stop, Cmd.none)
                         else move orient dir model
-        Tick _ -> case model.animateAt of
-            Nothing -> (model, Cmd.none)
-            Just at -> ( { model | animateAt = if at<1 then (Just <| at+animationStep) else Nothing }, Cmd.none)
+        Tick _ -> case model.animate of
+            Move at -> ( { model | animate = if at<1 then (Move <| at+animationStep) else Stop }, Cmd.none)
+            Stop -> (model, Cmd.none)
+            _ ->  (model, Cmd.none)
 
 view : Model -> Html Msg
 view model =
@@ -289,7 +309,7 @@ view model =
                 div [class [Score]] 
                 [ text (toString model.score)
                 , text " "
-                , text (toString model.animateAt)
+                , text (toString model.animate)
                 ]
             ]
         , div 
@@ -297,7 +317,7 @@ view model =
             , onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
             , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
             ]
-            [ render (Maybe.withDefault 1.0 model.animateAt) model.field
+            [ render model.animate model.field
     --        , button [onClick Up, disabled cant.up] [text "Up"]
     --        , button [onClick Down, disabled cant.down] [text "Down"]
     --        , button [onClick Left, disabled cant.left] [text "Left"]
@@ -323,5 +343,5 @@ init : (Model, Cmd Msg)
 init = 
     let 
         e = empty boardWidth boardHeight
-        model = Model 0 Nothing e Nothing
+        model = Model 0 Nothing e Stop
     in ( model, rand model.field )

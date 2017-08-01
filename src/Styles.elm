@@ -8,32 +8,27 @@ import Html.CssHelpers
 boardWidth = 4
 boardHeight = 4
 
-type TileType = Dropped | Moved Int | Merged Int Int
-
-type Tile = Tile Int TileType | NoTile
-
 namespace2048 =
     Html.CssHelpers.withNamespace "elm2048"
 
 type CssClasses = Board | BoardTitle | Score | BaseTile | T0 | T2 | T4 | T8 | T16 | T32 | 
     T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
 
-tileClass tile = [ BaseTile, 
-    case tile of 
-        NoTile -> T0
-        Tile n _ -> case n of
-            2 -> T2
-            4 -> T4
-            8 -> T8
-            16 -> T16
-            32 -> T32
-            64 -> T64
-            128 -> T128
-            256 -> T256
-            512 -> T512
-            1024 -> T1024
-            2048 -> T2048
-            _  -> if n < 9999 then TBig else THuge
+tileClass n = [ BaseTile, 
+    case n of 
+        0 -> T0
+        2 -> T2
+        4 -> T4
+        8 -> T8
+        16 -> T16
+        32 -> T32
+        64 -> T64
+        128 -> T128
+        256 -> T256
+        512 -> T512
+        1024 -> T1024
+        2048 -> T2048
+        _  -> if n < 9999 then TBig else THuge
     ]
 
 boardWidthVw =95.0
@@ -55,14 +50,14 @@ css = (stylesheet << namespace namespace2048.name)
         [
             display inlineBlock,
             borderRadius (vw 1),
---            color (rgb 255 255 255),
+            color (rgb 255 255 255),
             margin (vw 0.25),
             width (vw tileSize),
             height (vw tileSize),
             textAlign center,
             verticalAlign middle,
             lineHeight (vw tileSize),
---            fontSize (vw (tileSize / 2)),
+            fontSize (vw (tileSize / 2)),
             property "user-select" "none"
         ],
         class T0 [],
