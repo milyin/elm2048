@@ -30,7 +30,7 @@ visibleTileClass n = [ VisibleTile,
     ]
 
 css = let
-        boardSize = 98.0
+        boardSize = 95.0
         tileSize = boardSize / 4 -- use it for font size only: all other sizes are relative to parents.
                                 -- Font size in CSS can't be relative to parent so we apply transform to it 
                                 -- when field is not 4x4
