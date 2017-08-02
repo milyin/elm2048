@@ -9,7 +9,7 @@ import Html.CssHelpers
 namespace2048 =
     Html.CssHelpers.withNamespace ""
 
-type CssClasses = Board | BoardRow | BoardTitle | Score | BoardTile | VisibleTile | TileText 
+type CssClasses = Hidden | Board | BoardRow | BoardTitle | Score | BoardTile | VisibleTile | AnimableTile | TileText 
     | T0 | T2 | T4 | T8 | T16 | T32 | T64 | T128 | T256 | T512 | T1024 | T2048 | TBig | THuge
 
 visibleTileClass n = [ VisibleTile, 
@@ -55,7 +55,7 @@ css = let
         class Board
         [
             backgroundColor gray,
-            borderRadius (vw 1),
+            borderRadius (vmin 1),
             width (vmin boardSize),
             height (vmin boardSize),
             displayFlex,
@@ -77,7 +77,18 @@ css = let
             flexDirection row,
             alignItems stretch,
             justifyContent spaceAround,
-            flexBasis (pct 100)
+            flexBasis (pct 100),
+            position relative
+        ],
+        class AnimableTile
+        [
+            displayFlex,
+            flexBasis (pct 100),
+            alignItems stretch,
+            justifyContent center,
+            position absolute,
+            width (pct 100),
+            height (pct 100)
         ],
         class VisibleTile
         [
@@ -88,12 +99,16 @@ css = let
             borderRadius (vmin 1),
             color (rgb 255 255 255),
             property "user-select" "none",
-            margin (vmin 0.25)
+            margin (vmin 0.25),
+            fontFamily sansSerif
         ],
         class TileText [
             justifyContent center,
             alignItems center,
             fontSize (vmin fontSizeNorm)
+        ],
+        class Hidden [
+            display none
         ],
         class T0 [],
         class T2 [ backgroundColor (rgb 238 228 218) ],

@@ -11,15 +11,14 @@ import Mouse exposing (Position)
 import Json.Decode as Decode
 import TouchEvents exposing (onTouchStart, onTouchEnd, Touch)
 import Tuple exposing (..)
-import Time exposing (Time, millisecond)
+import Time exposing (Time, millisecond, inMilliseconds)
 import Css exposing (asPairs, transform, translate2, pct, vmin, width, height)
 
 { id, class, classList } = namespace2048
 
 dragSensitivity = 50
-animationTime = 500*millisecond
-timerInterval = 4*millisecond
-animationStep = timerInterval / animationTime
+moveAnimationTime = 100*millisecond
+timerInterval = 5*millisecond
 boardWidth = 4
 boardHeight = 4
 
@@ -42,15 +41,17 @@ type alias Field = {
     width : Int
 }
 
-type Animate = Stop | Move Float | Drop Float
+type AnimateState = AnimateStop | AnimateMoveStart | AnimateMove Time Time
 
 type alias Model =
     { score : Int
     , drag : Maybe (Int,Int)
     , field: Field
-    , animate: Animate
+    , animateState: AnimateState
     }
 
+toAt : Time -> Time -> Time -> Float
+toAt interval start cur = (inMilliseconds (cur - start)) / interval
 
 type Msg
     = Up
@@ -227,12 +228,12 @@ update msg model =
             if hole model.field
                 then case (drop v xy model.field) of
                     Just newfield -> ( { model 
-                        | field = newfield, animate = Move 0
+                        | field = newfield, animateState = AnimateMoveStart
                         }, Cmd.none)
                     Nothing -> (model, rand model.field)
-                else ( { model | animate = Drop 0 }, Cmd.none)
+                else (model, Cmd.none) -- later start animate drop here
         Nop -> (model, Cmd.none)
-        DragStart sx sy -> (Model model.score (Just (sx,sy) ) model.field Stop, Cmd.none)
+        DragStart sx sy -> ( { model | drag = Just (sx,sy) }, Cmd.none)
         DragEnd ex ey -> case model.drag of
             Nothing -> (model, Cmd.none)
             Just (sx,sy) -> let
@@ -244,64 +245,89 @@ update msg model =
                         Vert -> if dy > 0 then Forward else Backward
                 in
                     if (abs dx) + (abs dy) < dragSensitivity
-                        then (Model model.score Nothing model.field Stop, Cmd.none)
+                        then ( { model | drag = Nothing}, Cmd.none)
                         else move orient dir model
-        Tick _ -> case model.animate of
-            Move at -> ( { model | animate = if at<1 then (Move <| at+animationStep) else Stop }, Cmd.none)
-            Stop -> (model, Cmd.none)
-            _ ->  (model, Cmd.none)
-
-transitionStyle field (oldx,oldy) (newx,newy) at = let
-        dx = (toFloat (newx - oldx))*(1.0-at)
-        dy = (toFloat (newy - oldy))*(1.0-at)
-        percentx = (toString (round (dx * 100)))++"%"
-        percenty = (toString (round (dy * 100)))++"%"
-    in
-        "("++percentx++","++percenty++")"
-        
-toStringTile animate tile = case (animate,tile) of
-    (_, NoTile) -> ""
-    (_, Tile n Dropped) -> toString n
-    (_, Tile n (Moved _)) -> toString n
-    (Move _, Tile n (Merged (_,a) (_,_))) -> toString a
-    (_, Tile n (Merged (_,a) (_,_))) -> toString n
-
-toVisibleClassTile animate tile = case (animate,tile) of
-    (Move _, Tile _ Dropped) -> visibleTileClass 0
-    (Move _, Tile n (Merged (_,a) (_,_))) -> visibleTileClass a
-    (Move _, Tile n (Moved _)) -> visibleTileClass n
-    (_, Tile n _) -> visibleTileClass n
-    (_, NoTile) -> visibleTileClass 0
-
-toTransformStyle field (newx,newy) tile animate = let
-        at = case animate of
-            Stop -> 1
-            Move at -> at
-            Drop at -> at
-        toPct field at old new = (toFloat (old-new))*(1.0-at)*100
-        trn (oldx, oldy) = [ transform <| translate2 (toPct field at oldx newx |> pct) (toPct field at oldy newy |> pct) ]
-    in
-        case tile of
-            NoTile -> []
-            Tile n Dropped -> []
-            Tile n (Moved oldpos) -> trn (pos2xy field oldpos)
-            Tile n (Merged (pa,a) (pb,b)) -> trn (pos2xy field pa)
+        Tick time -> case model.animateState of
+            AnimateMoveStart -> ( { model | animateState = AnimateMove time time }, Cmd.none)
+            AnimateMove start _ -> ( 
+                { model | animateState = 
+                    if (toAt moveAnimationTime start time) > 1
+                        then AnimateStop
+                        else AnimateMove start time 
+                }, Cmd.none )
+            AnimateStop -> (model, Cmd.none)
 
 styled = asPairs >> style
 
-render : Animate -> Field -> Html msg
+type AnimateAt = Stop | Move Float | Drop Float
+
+animateAt : Model -> AnimateAt
+animateAt model = case model.animateState of
+    AnimateMoveStart -> Move 0
+    AnimateMove start cur -> Move (toAt moveAnimationTime start cur)
+    _ -> Stop
+
+renderTile transforms visual_classes display_text = 
+    div [ (class [AnimableTile]), styled transforms ]
+        [
+            div [ class visual_classes ]
+            [ 
+                div [ class [TileText] ] 
+                [ 
+                    text display_text
+                ] 
+            ]
+        ]
+
+renderFinalTile animate tile = case (animate,tile) of
+    (Stop, Tile n _) -> renderTile [] (visibleTileClass n) (toString n)
+    (Move _, _) -> renderTile [] [Hidden] ""
+    (Drop _, _) -> renderTile [] [Hidden] ""
+    (_, NoTile) -> renderTile [] [Hidden] ""
+
+moveTransform at (fromx,fromy) (tox,toy) = let
+        toPct at from to = (toFloat (from-to))*(1.0-at)*100
+    in [ transform <| translate2 (toPct at fromx tox  |> pct) (toPct at fromy toy |> pct) ]
+
+renderSourceTile1 animate tile field xy = case (animate,tile) of
+    (Stop, _) -> renderTile [] [Hidden] ""
+    (Move at, Tile n Dropped) -> renderTile [] [Hidden] ""
+    (Move at, Tile n (Moved pos)) -> renderTile 
+        (moveTransform at (pos2xy field pos) xy)
+        (visibleTileClass n)
+        (toString n)
+    (Move at, Tile n (Merged (pa,a) (_,_))) -> renderTile 
+        (moveTransform at (pos2xy field pa) xy)
+        (visibleTileClass a)
+        (toString a)
+    (Drop _, _) -> renderTile [] [Hidden] ""
+    (_, NoTile) -> renderTile [] [Hidden] ""
+
+renderSourceTile2 animate tile field xy = case (animate,tile) of
+    (Stop, _) -> renderTile [] [Hidden] ""
+    (Move at, Tile n Dropped) -> renderTile [] [Hidden] ""
+    (Move at, Tile n (Moved _)) -> renderTile [] [Hidden] ""
+    (Move at, Tile n (Merged (_,_) (pb,b))) -> renderTile 
+        (moveTransform at (pos2xy field pb) xy)
+        (visibleTileClass b)
+        (toString b)
+    (Drop _, _) -> renderTile [] [Hidden] ""
+    (_, NoTile) -> renderTile [] [Hidden] ""
+
+
+render : AnimateAt -> Field -> Html msg
 render animate field = let
-        renderRow y = div [ class [BoardRow] ] (List.map (\x -> renderTile animate (x,y)) (xs field))
-        renderTile animate xy = let 
+        renderBoardRow y = div [ class [BoardRow] ] (List.map (\x -> renderBoardTile animate (x,y)) (xs field))
+        renderBoardTile animate xy = let 
                 tile = get xy field
-            in  div [ class [BoardTile] -- BoardTile have no margins. So apply transform n*100% correctly moves it to n tiles
-                    , styled (toTransformStyle field xy tile animate) 
-                    ]
-                    [ div   [ class (toVisibleClassTile animate tile) ] -- VisibleTile is inside BoardTile
-                            [ div [ class [TileText] ] [ text (toStringTile animate tile) ] ]
-                    ]
+            -- BoardTile have no margins. So transform n*100% correctly moves it to n tiles
+            in  div [ class [BoardTile] ]
+                [ renderFinalTile animate tile
+                , renderSourceTile1 animate tile field xy
+                , renderSourceTile2 animate tile field xy
+                ]
     in
-        div [ class [Board] ] (List.map (\y -> renderRow y) (ys field))
+        div [ class [Board] ] (List.map (\y -> renderBoardRow y) (ys field))
 
 
 view : Model -> Html Msg
@@ -309,19 +335,19 @@ view model =
     let 
         cant = cantShiftField model.field
     in div []
-        [ div [class [BoardTitle]] 
-            [
-                div [class [Score]] 
-                [ text (toString model.score)
-                , text " "
-                , text (toString model.animate)
-                ]
-            ]
-        , div 
+        -- [ div [class [BoardTitle]] 
+          --  [
+          --      div [class [Score]] 
+          --      [ text (toString model.score)
+          --      , text " "
+          --      , text (toString model.animate)
+          --      ]
+          --  ]
+        [ div 
             [ onTouchStart (\pos -> DragStart (round pos.clientX) (round pos.clientY) )
             , onTouchEnd (\pos -> DragEnd (round pos.clientX) (round pos.clientY) )
             ]
-            [ render model.animate model.field
+            [ render (animateAt model) model.field
     --        , button [onClick Up, disabled cant.up] [text "Up"]
     --        , button [onClick Down, disabled cant.down] [text "Down"]
     --        , button [onClick Left, disabled cant.left] [text "Left"]
@@ -347,5 +373,5 @@ init : (Model, Cmd Msg)
 init = 
     let 
         e = empty boardWidth boardHeight
-        model = Model 0 Nothing e Stop
+        model = Model 0 Nothing e AnimateStop
     in ( model, rand model.field )
